@@ -50,7 +50,7 @@ RUN chown -R www-data:www-data /var/www/html \
 RUN composer install --optimize-autoloader --no-interaction
 
 # Install Node dependencies and build assets
-RUN npm install && npm run prod
+RUN npm install && npm run build
 
 # Expose port for PHP-FPM
 EXPOSE 9000
