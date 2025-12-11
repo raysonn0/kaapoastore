@@ -1,5 +1,5 @@
-# Use official PHP 8.2 FPM image
-FROM php:8.2-fpm
+# Use official PHP 8.2 CLI image (not FPM)
+FROM php:8.2-cli
 
 # Set working directory
 WORKDIR /var/www/html
@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
     redis-tools \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions including ext-calendar
+# Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo_mysql \
@@ -52,8 +52,8 @@ RUN composer install --optimize-autoloader --no-interaction
 # Install Node dependencies and build assets
 RUN npm install && npm run build
 
-# Expose port for PHP-FPM
-EXPOSE 9000
+# Railway dynamic port
+ENV PORT $PORT
 
-# Start PHP-FPM
-CMD ["php-fpm"]
+# Start PHP built-in server (adjust 'public' if your index.php is elsewhere)
+CMD ["php", "-S", "0.0.0.0:$PORT", "-t", "public"]
