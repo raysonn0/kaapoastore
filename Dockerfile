@@ -1,80 +1,64 @@
-# Base image
-FROM php:8.2-fpm
+# Stage 1: Build frontend
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY composer.json composer.lock ./
+
+# Install Node.js dependencies
+RUN npm install
+
+# Copy all files
+COPY . .
+
+# Build Vite frontend
+RUN npm run build
+
+# Stage 2: Build backend
+FROM php:8.2-fpm-alpine
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git unzip libzip-dev libonig-dev libxml2-dev \
-    libpng-dev libjpeg-dev libfreetype6-dev \
-    libicu-dev libxslt-dev curl npm nodejs zip \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo_mysql mysqli mbstring exif pcntl bcmath gd intl zip opcache xml sockets soap
-
-# Install Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# Set working directory
-WORKDIR /var/www/html
-
-# Copy PHP dependencies first
-COPY composer.json composer.lock ./
-RUN composer install --optimize-autoloader --no-interaction --no-dev
-
-# Copy Node dependencies
-COPY package.json package-lock.json ./
-RUN npm install && npm run build || true
-
-# Copy app source
-COPY . .
-
-# Clear caches
-RUN php artisan config:clear
-RUN php artisan route:clear
-RUN php artisan view:clear
-RUN php artisan cache:clear
-
-# Set Railway port
-ENV PORT 8000
-
-# Start Laravel
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
-# Use PHP FPM
-FROM php:8.2-fpm
-
-# System dependencies
-RUN apt-get update && apt-get install -y \
-    git unzip libzip-dev libonig-dev libxml2-dev \
-    libpng-dev libjpeg-dev libfreetype6-dev \
-    libicu-dev libxslt-dev curl zip npm nodejs \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# PHP extensions
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo_mysql mysqli mbstring exif pcntl bcmath gd intl zip opcache xml sockets soap
-
-# Install Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+RUN apk add --no-cache \
+    bash \
+    git \
+    zip \
+    unzip \
+    curl \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    libwebp-dev \
+    libxpm-dev \
+    libxml2-dev \
+    oniguruma-dev \
+    nodejs \
+    npm \
+    mysql-client \
+    icu-dev \
+    autoconf \
+    g++ \
+    make \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl soap sockets
 
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy composer files first
-COPY composer.json composer.lock ./
-RUN composer install --optimize-autoloader --no-interaction --no-dev
+# Copy PHP backend + frontend build
+COPY --from=frontend-builder /app ./
 
-# Copy the rest of the app
-COPY . .
+# Install composer
+COPY --from=composer:2.6 /usr/bin/composer /usr/bin/composer
 
-# Clear caches
-RUN php artisan config:clear
-RUN php artisan route:clear
-RUN php artisan view:clear
-RUN php artisan cache:clear
+# Install PHP dependencies
+RUN composer install --optimize-autoloader --no-dev
 
-# Set Railway port
-ENV PORT 8000
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Start Laravel
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+# Expose port
+EXPOSE 8000
+
+# Run migrations & serve
+CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=8000
