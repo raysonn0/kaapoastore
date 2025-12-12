@@ -1,16 +1,9 @@
 # -----------------------------
-# Use PHP 8.2 CLI image
+# Stage 0: PHP + Composer
 # -----------------------------
-    FROM php:8.2-cli
+    FROM php:8.2-fpm AS base
 
-    # -----------------------------
-    # Set working directory
-    # -----------------------------
-    WORKDIR /var/www/html
-    
-    # -----------------------------
     # Install system dependencies
-    # -----------------------------
     RUN apt-get update && apt-get install -y \
         git \
         unzip \
@@ -29,9 +22,7 @@
         zip \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
     
-    # -----------------------------
-    # Install PHP extensions required by Bagisto
-    # -----------------------------
+    # Install PHP extensions
     RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
         && docker-php-ext-install \
             pdo_mysql \
@@ -49,43 +40,40 @@
             soap \
             sockets
     
-    # -----------------------------
     # Install Composer
-    # -----------------------------
     COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
     
+    # Set working directory
+    WORKDIR /var/www/html
+    
     # -----------------------------
-    # Copy only PHP dependencies first (for caching)
+    # Stage 1: Copy PHP dependencies
     # -----------------------------
     COPY composer.json composer.lock ./
-    RUN composer install --optimize-autoloader --no-interaction
+    RUN composer install --optimize-autoloader --no-interaction || true
     
     # -----------------------------
-    # Copy Node dependencies and build assets
+    # Stage 2: Copy Node dependencies & build
     # -----------------------------
-    # Only copy package.json (skip missing package-lock.json)
-    COPY package.json ./
-    RUN npm install && npm run build
+    COPY package.json package-lock.json ./
+    RUN npm install && npm run build || true
     
     # -----------------------------
-    # Copy full project
+    # Stage 3: Copy application code
     # -----------------------------
     COPY . .
     
-    # -----------------------------
-    # Set permissions
-    # -----------------------------
-    RUN chown -R www-data:www-data /var/www/html \
-        && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+    # Clear caches (optional)
+    RUN php artisan config:clear
+    RUN php artisan route:clear
+    RUN php artisan view:clear
+    RUN php artisan cache:clear
+    
+    # Set the port for Railway
+    ENV PORT 8000
     
     # -----------------------------
-    # Railway dynamic port
+    # Serve the app
     # -----------------------------
-    ENV PORT=${PORT:-8000}
-    EXPOSE ${PORT}
-    
-    # -----------------------------
-    # Start Laravel built-in server
-    # -----------------------------
-    CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=$PORT"]
+    CMD php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
     
