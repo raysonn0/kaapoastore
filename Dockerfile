@@ -55,12 +55,16 @@
     COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
     
     # -----------------------------
-    # Copy only dependency files first (for caching)
+    # Copy only PHP dependencies first (for caching)
     # -----------------------------
     COPY composer.json composer.lock ./
     RUN composer install --optimize-autoloader --no-interaction
     
-    COPY package.json package-lock.json ./
+    # -----------------------------
+    # Copy Node dependencies and build assets
+    # -----------------------------
+    # Only copy package.json (skip missing package-lock.json)
+    COPY package.json ./
     RUN npm install && npm run build
     
     # -----------------------------
@@ -81,7 +85,7 @@
     EXPOSE ${PORT}
     
     # -----------------------------
-    # Start Laravel server on Railway
+    # Start Laravel built-in server
     # -----------------------------
     CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=$PORT"]
     
